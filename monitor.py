@@ -1,74 +1,102 @@
 # monitor.py
-import discord
-from discord.ext import tasks
-from datetime import datetime
+import requests
+from bs4 import BeautifulSoup
+import time
+import hashlib
 import os
 from dotenv import load_dotenv
 import resend
+from datetime import datetime
 
 load_dotenv()
 
-class DiscordMonitor(discord.Client):
+class LeaguesMonitor:
     def __init__(self):
-        # Fix: Add intents
-        intents = discord.Intents.default()
-        intents.message_content = True
-        super().__init__(self_bot=True, intents=intents)  # Added intents here
-        
+        self.url = "https://secure.runescape.com/m=news/leagues-v-teasers--faqs---releasing-november-27th?oldschool=1"
         resend.api_key = os.getenv('RESEND_API_KEY')
-        self.channel_id = int(os.getenv('CHANNEL_ID'))
-        self.last_message_time = datetime.now().timestamp()
+        self.last_hash = None
+        
+    def get_content(self):
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+        try:
+            response = requests.get(self.url, headers=headers)
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            # Get entire article content div
+            content = soup.find('div', class_='news-article-content')
+            return str(content) if content else None
 
-    async def setup_hook(self):
-        self.check_messages.start()
+        except Exception as e:
+            print(f"Error fetching content: {str(e)}")
+            return None
 
-    @tasks.loop(seconds=15)
-    async def check_messages(self):
-        channel = self.get_channel(self.channel_id)
-        if not channel:
-            print(f'Could not find channel {self.channel_id}')
-            return
+    def get_content_hash(self, content):
+        if not content:
+            return None
+        return hashlib.md5(content.encode('utf-8')).hexdigest()
 
-        after = datetime.fromtimestamp(self.last_message_time)
-        async for message in channel.history(after=after, limit=10):
-            await self.send_notification(message)
-            self.last_message_time = message.created_at.timestamp()
-
-    async def send_notification(self, message):
-        content = f"""
-New message in {message.channel.name}
-From: {message.author}
-Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-
-Content:
-{message.content}
-        """
-
+    def send_notification(self):
+        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         try:
             r = resend.Emails.send({
                 "from": "onboarding@resend.dev",
                 "to": "cody.a.vanzandt@gmail.com",
-                "subject": f"Discord Update - {message.channel.name}",
-                "text": content,
+                "subject": "OSRS Leagues V Update!",
+                "text": f"""
+Change detected on the Leagues V page!
+Time: {current_time}
+
+Check it out here:
+{self.url}
+
+The page content has been updated - there might be a new reveal!
+                """
             })
-            print(f'Email sent: {message.content[:50]}...')
+            print(f'Email notification sent at {current_time}!')
         except Exception as e:
             print(f'Failed to send email: {str(e)}')
 
-    async def on_ready(self):
-        print(f'Logged in successfully')
-        print(f'Monitoring channel: {self.channel_id}')
-        print('Press Ctrl+C to exit')
+    def check_for_changes(self):
+        try:
+            content = self.get_content()
+            if not content:
+                print("Failed to get content")
+                return
+            
+            current_hash = self.get_content_hash(content)
+            current_time = datetime.now().strftime("%H:%M:%S")
+            
+            if self.last_hash is None:
+                self.last_hash = current_hash
+                print(f"[{current_time}] Initial content hash stored. Monitoring for changes...")
+                return
+            
+            if current_hash != self.last_hash:
+                print(f"[{current_time}] Change detected!")
+                self.send_notification()
+                self.last_hash = current_hash
+            else:
+                print(f"[{current_time}] No changes detected")
+                
+        except Exception as e:
+            print(f"Error checking for changes: {str(e)}")
+
+    def run(self):
+        print("Starting Leagues V monitor...")
+        print(f"Monitoring URL: {self.url}")
+        print("Checking every 15 seconds")
+        print("Press Ctrl+C to exit")
+        
+        while True:
+            self.check_for_changes()
+            time.sleep(15)
 
 if __name__ == "__main__":
-    required_vars = ['USER_TOKEN', 'RESEND_API_KEY', 'CHANNEL_ID']
-    
-    missing_vars = [var for var in required_vars if not os.getenv(var)]
-    if missing_vars:
-        print("Error: Missing required environment variables:")
-        for var in missing_vars:
-            print(f"- {var}")
+    if not os.getenv('RESEND_API_KEY'):
+        print("Error: RESEND_API_KEY is required in .env file")
         exit(1)
 
-    client = DiscordMonitor()
-    client.run(os.getenv('USER_TOKEN'))
+    monitor = LeaguesMonitor()
+    monitor.run()
