@@ -26,7 +26,7 @@ class LeaguesMonitor:
             
             # Get entire article content div
             content = soup.find('div', class_='news-article-content')
-            return str(content) if content else None
+            return str(content)
 
         except Exception as e:
             print(f"Error fetching content: {str(e)}")
