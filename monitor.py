@@ -1,3 +1,4 @@
+# monitor.py
 import discord
 from discord.ext import tasks
 from datetime import datetime
@@ -9,7 +10,11 @@ load_dotenv()
 
 class DiscordMonitor(discord.Client):
     def __init__(self):
-        super().__init__(self_bot=True)  # self_bot mode for user token
+        # Fix: Add intents
+        intents = discord.Intents.default()
+        intents.message_content = True
+        super().__init__(self_bot=True, intents=intents)  # Added intents here
+        
         resend.api_key = os.getenv('RESEND_API_KEY')
         self.channel_id = int(os.getenv('CHANNEL_ID'))
         self.last_message_time = datetime.now().timestamp()
