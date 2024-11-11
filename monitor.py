@@ -1,6 +1,4 @@
-# monitor.py
 import discord
-import asyncio
 from discord.ext import tasks
 from datetime import datetime
 import os
@@ -11,10 +9,7 @@ load_dotenv()
 
 class DiscordMonitor(discord.Client):
     def __init__(self):
-        intents = discord.Intents.default()
-        intents.message_content = True
-        super().__init__(intents=intents)
-        
+        super().__init__(self_bot=True)  # self_bot mode for user token
         resend.api_key = os.getenv('RESEND_API_KEY')
         self.channel_id = int(os.getenv('CHANNEL_ID'))
         self.last_message_time = datetime.now().timestamp()
@@ -22,7 +17,7 @@ class DiscordMonitor(discord.Client):
     async def setup_hook(self):
         self.check_messages.start()
 
-    @tasks.loop(seconds=5)
+    @tasks.loop(seconds=15)
     async def check_messages(self):
         channel = self.get_channel(self.channel_id)
         if not channel:
@@ -56,15 +51,14 @@ Content:
             print(f'Failed to send email: {str(e)}')
 
     async def on_ready(self):
-        print(f'Logged in as {self.user}')
+        print(f'Logged in successfully')
         print(f'Monitoring channel: {self.channel_id}')
         print('Press Ctrl+C to exit')
 
 if __name__ == "__main__":
-    required_vars = ['DISCORD_TOKEN', 'RESEND_API_KEY', 'CHANNEL_ID']
+    required_vars = ['USER_TOKEN', 'RESEND_API_KEY', 'CHANNEL_ID']
     
     missing_vars = [var for var in required_vars if not os.getenv(var)]
-    
     if missing_vars:
         print("Error: Missing required environment variables:")
         for var in missing_vars:
@@ -72,4 +66,4 @@ if __name__ == "__main__":
         exit(1)
 
     client = DiscordMonitor()
-    client.run(os.getenv('DISCORD_TOKEN'))
+    client.run(os.getenv('USER_TOKEN'))
